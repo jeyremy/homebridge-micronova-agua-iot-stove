@@ -276,7 +276,7 @@ class HeaterCoolerMicronovaAguaIOTStove {
 
 		// Register app at start, then login, then get a stove device, and associated values
 		this._initPluginFromAPI();
-		
+
 		// Set characteristics properties boundaries and valid values
 		// Setting CurrentHeaterCoolerState and TargetHeaterCoolerState allows to
 		// lock device to heater mode only
@@ -338,19 +338,20 @@ class HeaterCoolerMicronovaAguaIOTStove {
 		this._registerAPIApp( (err, appok) => {
 			if (appok || !err) {
 				this._setAPILogin(false, (err, tokok) => {
-					if (tokok || !err) { 
+					if (tokok || !err) {
 						this._getAPIStoveDevice( (err, okmap) => {
 							if (okmap || !err) {
 								// Set API provided characteristics limits
-								this._getStoveRegisterBoundaries(STOVE_CURRENT_TEMP_REGISTER, (err, boundaries) => {
-									if (boundaries || !err) {
-										this.stoveService.getCharacteristic(this.Characteristic.CurrentTemperature)
-											.setProps({minValue: boundaries[0], maxValue: boundaries[1], minStep: boundaries[2]});
-										this.stoveCharDefaultTemp = boundaries[0];
-									} else {
-										this.log.error("init could not get stove current temperature boundaries: " + err);
-									}
-								});
+								// FIX: Micronova temp_air_get boundaries (0–6) are NOT °C, force HomeKit range
+								this.stoveService.getCharacteristic(this.Characteristic.CurrentTemperature)
+									.setProps({
+										minValue: -10,
+										maxValue: 50,
+										minStep: 0.1
+									});
+
+								this.stoveCharDefaultTemp = 0;
+
 								this._getStoveRegisterBoundaries(STOVE_SET_TEMP_REGISTER, (err, boundaries) => {
 									if (boundaries || !err) {
 										this.stoveService.getCharacteristic(this.Characteristic.HeatingThresholdTemperature)
@@ -391,7 +392,7 @@ class HeaterCoolerMicronovaAguaIOTStove {
 							} else {
 								this.log.error("init could not retrieve required stove info from API: " + err);
 							}
-						}); 
+						});
 					} else {
 						this.log.error("init could not login once with API: " + err);
 					}
@@ -671,7 +672,7 @@ class HeaterCoolerMicronovaAguaIOTStove {
 		devicepostdata[POST_API_DEVICEINFO_KEY_PRODUCT] = this.apiStoveDeviceProduct;
 		this._sendAPIRequest(API_DEVICEINFO, "POST", JSON.stringify(devicepostdata), (err, json) => {
 			if (json || !err) {
-				if ((RESP_API_DEVICEINFO_KEY_INFO in json) && (json[RESP_API_DEVICEINFO_KEY_INFO].length > 0) && 
+				if ((RESP_API_DEVICEINFO_KEY_INFO in json) && (json[RESP_API_DEVICEINFO_KEY_INFO].length > 0) &&
 					(RESP_API_DEVICEINFO_KEY_REGISTERSMAP_ID in json[RESP_API_DEVICEINFO_KEY_INFO][0])) {
 					this._debug("_getAPIStoveDeviceInfo got infos " + JSON.stringify(json));
 					callback(null, json[RESP_API_DEVICEINFO_KEY_INFO][0][RESP_API_DEVICEINFO_KEY_REGISTERSMAP_ID]);
@@ -917,7 +918,7 @@ class HeaterCoolerMicronovaAguaIOTStove {
 			} else if ((this.lastStoveRegistersUpdate + STOVE_REGISTERS_CACHE_KEEP) >= Date.now()) {
 				this._debug("_updateAPIRegistersData will do nothing, cache is up to date");
 				callback(null, false);
-			// Otherwise, schedule a real API data read job to fill the cache
+				// Otherwise, schedule a real API data read job to fill the cache
 			} else {
 				// This var is doing the magic on knowing if a read job is already scheduled
 				this.apiPendingReadJob = true;
@@ -989,15 +990,15 @@ class HeaterCoolerMicronovaAguaIOTStove {
 	_getStoveRegisterBoundaries(registername, callback) {
 		this._getStoveRegister(registername, (err, register) => {
 			if (register || !err) {
-					if ( (REGISTER_KEY_MIN in register) && (REGISTER_KEY_MAX in register) ) {
-						const bmin = register[REGISTER_KEY_MIN];
-						const bmax = register[REGISTER_KEY_MAX];
-						const bstep = register[REGISTER_KEY_STEP];
-						this._debug("_getStoveRegisterBoundaries " + registername + " => [" + bmin + ", " + bmax + "] step " + bstep);
-						callback(null, [bmin, bmax, bstep]);
-					} else {
-						callback("_getStoveRegisterBoundaries could not get boundaries from register for: " + registername, null);
-					}
+				if ( (REGISTER_KEY_MIN in register) && (REGISTER_KEY_MAX in register) ) {
+					const bmin = register[REGISTER_KEY_MIN];
+					const bmax = register[REGISTER_KEY_MAX];
+					const bstep = register[REGISTER_KEY_STEP];
+					this._debug("_getStoveRegisterBoundaries " + registername + " => [" + bmin + ", " + bmax + "] step " + bstep);
+					callback(null, [bmin, bmax, bstep]);
+				} else {
+					callback("_getStoveRegisterBoundaries could not get boundaries from register for: " + registername, null);
+				}
 			} else {
 				callback("_getStoveRegisterBoundaries failed: " + err, null);
 			}
